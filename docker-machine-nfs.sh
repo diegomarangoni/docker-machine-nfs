@@ -2,17 +2,17 @@
 #
 # The MIT License (MIT)
 # Copyright © 2015 Toni Van de Voorde <toni.vdv@gmail.com>
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the “Software”), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -70,7 +70,7 @@ echoProperties ()
 
 # @info:    Checks if a given property is set
 # @return:  true, if variable is not set; else false
-isPropertyNotSet() 
+isPropertyNotSet()
 {
     if [ -z ${1+x} ]; then return 0; else return 1; fi
 }
@@ -81,11 +81,11 @@ isPropertyNotSet()
 checkMachinePresence ()
 {
     echoInfo "machine presence ... \t\t\t"
-    
+
     if [ "" = "$(docker-machine ls | sed 's/  */:/g' | grep $1:)" ]; then
         echoError "Could not find the machine '$1'!"; exit 1;
     fi
-        
+
     echoSuccess "OK"
 }
 
@@ -95,23 +95,23 @@ checkMachinePresence ()
 checkMachineRunning ()
 {
     echoInfo "machine running ... \t\t\t"
-    
+
     machine_state=$(docker-machine ls | sed 's/\*//g' | sed 's/  */:/g' | grep ^$1: | cut -d ':' -f3)
-    
+
     if [ "Running" != "${machine_state}" ]; then
         echoError "The machine '$1' is not running but '${machine_state}'!"; exit 1;
     fi
-    
+
     echoSuccess "OK"
 }
 
 # @info:    Loads mandatory properties from the docker machine
-lookupMandatoryProperties () 
+lookupMandatoryProperties ()
 {
     echoInfo "Lookup mandatory properties ... \t\t"
-    
+
     prop_machine_ip=$(docker-machine ip $1)
-    
+
     prop_machine_vboxnet_name=$(VBoxManage showvminfo $1 --machinereadable | grep hostonlyadapter | cut -d'"' -f2)
     if [ "" = "${prop_machine_vboxnet_name}" ]; then
         echoError "Could not find the virtualbox net name!"; exit 1
@@ -121,29 +121,30 @@ lookupMandatoryProperties ()
     if [ "" = "${prop_machine_vboxnet_ip}" ]; then
         echoError "Could not find the virtualbox net ip!"; exit 1
     fi
-    
+
     echoSuccess "OK"
 }
 
 # @info:    Configures the NFS
-configureNFS() 
-{   
-    echoInfo "Configure NFS ... \n"
-    
+configureNFS()
+{
+    echoWarn "!!! Sudo will be necessary for editing /etc/exports !!!"
+
+    echo #EMPTY LINE
+
+    echoInfo "Configure NFS ... \t\t\t"
+
     if isPropertyNotSet $prop_machine_ip; then echoError "'prop_machine_ip' not set!"; exit 1; fi
-        
-    echoWarn "\n !!! Sudo will be necessary for editing /etc/exports !!!"
-    
+
     # Update the /etc/exports file and restart nfsd
     (
-        echo '\n"/Users" '$prop_machine_ip' -alldirs -mapall='$(id -u)':'$(id -g)'\n' | sudo tee -a /etc/exports && \
+        echo '\n"/Users" '$prop_machine_ip' -alldirs -mapall=0:0\n' | sudo tee -a /etc/exports && \
         awk '!a[$0]++' /etc/exports | sudo tee /etc/exports
-        
     ) > /dev/null
-    
+
     sudo nfsd restart ; sleep 2 && sudo nfsd checkexports
-    
-    echoSuccess "\t\t\t\t\t\tOK"
+
+    echoSuccess "OK"
 }
 
 # @info:    Configures the Boot2Docker to mount nfs
@@ -154,32 +155,14 @@ configureBoot2Docker()
     if isPropertyNotSet $prop_machine_name; then echoError "'prop_machine_name' not set!"; exit 1; fi
     if isPropertyNotSet $prop_machine_vboxnet_ip; then echoError "'prop_machine_vboxnet_ip' not set!"; exit 1; fi
 
-    # render bootlocal.sh and copy bootlocal.sh over to boot2docker
-    # (this will override an existing /var/lib/boot2docker/bootlocal.sh)
-    
-    local bootlocalsh='#/bin/bash
-    sudo umount /Users
-    sudo /usr/local/etc/init.d/nfs-client start
-    sudo mount -t nfs -o noacl,async '$prop_machine_vboxnet_ip':/Users /Users'
+    docker-machine ssh $prop_machine_name "sudo umount /Users || true" > /dev/null
+    docker-machine ssh $prop_machine_name "sudo /usr/local/etc/init.d/nfs-client start" > /dev/null
+    docker-machine ssh $prop_machine_name "sudo mount -t nfs -o noacl,async '$prop_machine_vboxnet_ip':/Users /Users" > /dev/null
 
-    docker-machine ssh $prop_machine_name "echo '$bootlocalsh' | sudo tee /var/lib/boot2docker/bootlocal.sh && sudo chmod +x /var/lib/boot2docker/bootlocal.sh" > /dev/null
-    
     echoSuccess "OK"
 }
 
-# @info:    Restarts Boot2Docker
-restartBoot2Docker()
-{
-    echoInfo "Restart   Boot2Docker ... \t\t"
-    
-    if isPropertyNotSet $prop_machine_name; then echoError "'prop_machine_name' not set!"; exit 1; fi
-    
-    docker-machine restart $prop_machine_name > /dev/null
-    
-    echoSuccess "OK"
-}
-
-# @return:  'true', if NFS is mounted; else 'false'  
+# @return:  'true', if NFS is mounted; else 'false'
 isNFSMounted()
 {
     local nfs_mount=$(docker-machine ssh $prop_machine_name "df || true" | grep "$prop_machine_vboxnet_ip:/Users")
@@ -190,11 +173,11 @@ isNFSMounted()
 verifyNFSMount()
 {
     echoInfo "Verify NFS mount ... \t\t\t"
-    
+
     if [ "$(isNFSMounted)" = "false" ]; then
         echoError "Cannot detect the NFS mount :("; exit 1
     fi
-    
+
     echoSuccess "OK"
 }
 
@@ -203,12 +186,12 @@ showFinish()
 {
     echo "\033[0;36m"
     echo "--------------------------------------------"
-    echo 
+    echo
     echo " The docker-machine '$prop_machine_name'"
     echo " is now mounted with NFS!"
-    echo 
+    echo
     echo " ENJOY high speed mounts :D"
-    echo 
+    echo
     echo "--------------------------------------------"
     echo "\033[0m"
 }
@@ -240,7 +223,6 @@ echo #EMPTY LINE
 configureNFS
 
 configureBoot2Docker
-restartBoot2Docker
 
 verifyNFSMount
 
