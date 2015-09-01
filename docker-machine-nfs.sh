@@ -128,9 +128,9 @@ lookupMandatoryProperties ()
 # @info:    Configures the NFS
 configureNFS()
 {
-    echoWarn "!!! Sudo will be necessary for editing /etc/exports !!!"
+    echoWarn "!!! Sudo will be necessary for editing /etc/exports !!!\n"
 
-    echo #EMPTY LINE
+    sudo echo #EMPTY LINE
 
     echoInfo "Configure NFS ... \t\t\t"
 
@@ -138,7 +138,7 @@ configureNFS()
 
     # Update the /etc/exports file and restart nfsd
     (
-        echo '\n"/Users" '$prop_machine_ip' -alldirs -mapall=0:0\n' | sudo tee -a /etc/exports && \
+        echo '"/Users" '$prop_machine_ip' -alldirs -mapall=0:0\n' | sudo tee -a /etc/exports && \
         awk '!a[$0]++' /etc/exports | sudo tee /etc/exports
     ) > /dev/null
 
@@ -157,7 +157,7 @@ configureBoot2Docker()
 
     docker-machine ssh $prop_machine_name "sudo umount /Users || true" > /dev/null
     docker-machine ssh $prop_machine_name "sudo /usr/local/etc/init.d/nfs-client start" > /dev/null
-    docker-machine ssh $prop_machine_name "sudo mount -t nfs -o noacl,async '$prop_machine_vboxnet_ip':/Users /Users" > /dev/null
+    docker-machine ssh $prop_machine_name "sudo mount -t nfs -o noatime,soft,nolock,vers=3,udp,proto=udp,rsize=8192,wsize=8192,namlen=255,timeo=10,retrans=3,nfsvers=3 '$prop_machine_vboxnet_ip':/Users /Users" > /dev/null
 
     echoSuccess "OK"
 }
